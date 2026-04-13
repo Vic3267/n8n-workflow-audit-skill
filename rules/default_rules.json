@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "name": "n8n-workflow-audit-default-rules",
+    "version": "1.0.0"
+  },
+  "settings": {
+    "expected_notion_update_event": "pagedUpdatedInDatabase",
+    "placeholder_markers": [
+      "PLACEHOLDER",
+      "TBD",
+      "TODO",
+      "MAIN_WORKFLOW_ID",
+      "<WORKFLOW_ID>"
+    ],
+    "status_field_keywords": [
+      "status",
+      "文案狀態",
+      "公司資料查詢"
+    ],
+    "status_node_name_keywords": [
+      "status",
+      "狀態",
+      "重查",
+      "潤稿"
+    ],
+    "forbidden_pattern_strings": [
+      "Object.prototype.hasOwnProperty.call(",
+      ".__proto__",
+      ".prototype."
+    ]
+  },
+  "rules": [
+    {
+      "id": "N8N-001",
+      "title": "Notion status parsing must support flattened payload",
+      "severity": "FAIL",
+      "enabled": true
+    },
+    {
+      "id": "N8N-002",
+      "title": "Status-driven Notion trigger must use update event",
+      "severity": "FAIL",
+      "enabled": true
+    },
+    {
+      "id": "N8N-003",
+      "title": "Execute Workflow must bind a concrete workflow id",
+      "severity": "FAIL",
+      "enabled": true
+    },
+    {
+      "id": "N8N-004",
+      "title": "Expression/code must avoid sandbox-forbidden prototype access",
+      "severity": "FAIL",
+      "enabled": true
+    },
+    {
+      "id": "N8N-005",
+      "title": "Audit output contract and exit code",
+      "severity": "PASS",
+      "enabled": true
+    }
+  ]
+}
