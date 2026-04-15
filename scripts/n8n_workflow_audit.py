@@ -66,6 +66,78 @@ def has_status_keyword(text: str, keywords: Iterable[str]) -> bool:
     return False
 
 
+def is_explicit_false(value: Any) -> bool:
+    if value is False:
+        return True
+    if isinstance(value, str) and value.strip().lower() == "false":
+        return True
+    return False
+
+
+def parse_filter_json(raw: str) -> Any | None:
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None
+
+
+def has_nested_compound_filter(payload: Any) -> bool:
+    """
+    Detect nested AND/OR usage such as:
+      {"and":[{"or":[...]}]}
+      {"or":[{"and":[...]}]}
+      {"and":[...], "or":[...]}
+    """
+
+    def walk(node: Any) -> bool:
+        if isinstance(node, dict):
+            lowered_keys = {str(k).lower() for k in node.keys()}
+            if "and" in lowered_keys and "or" in lowered_keys:
+                return True
+
+            for key, value in node.items():
+                key_l = str(key).lower()
+                if key_l in {"and", "or"} and isinstance(value, list):
+                    opposite = "or" if key_l == "and" else "and"
+                    for item in value:
+                        if isinstance(item, dict) and opposite in {str(k).lower() for k in item.keys()}:
+                            return True
+                if walk(value):
+                    return True
+
+        if isinstance(node, list):
+            for item in node:
+                if walk(item):
+                    return True
+        return False
+
+    return walk(payload)
+
+
+def has_rl_resource_locator(obj: Any) -> bool:
+    """Recursively check if any parameter uses __rl Resource Locator format."""
+    if isinstance(obj, dict):
+        if obj.get("__rl") is True:
+            return True
+        return any(has_rl_resource_locator(v) for v in obj.values())
+    if isinstance(obj, list):
+        return any(has_rl_resource_locator(item) for item in obj)
+    return False
+
+
+def scan_for_iife_json(obj: Any) -> bool:
+    """Check if any expression string uses IIFE with $json access."""
+    if isinstance(obj, str) and obj.strip().startswith("={{"):
+        iife_match = re.search(r"\(\(\s*\)\s*=>|\(\s*function\s*\(", obj)
+        if iife_match and "$json" in obj:
+            return True
+    if isinstance(obj, dict):
+        return any(scan_for_iife_json(v) for v in obj.values())
+    if isinstance(obj, list):
+        return any(scan_for_iife_json(item) for item in obj)
+    return False
+
+
 def is_status_driven_workflow(workflow: dict[str, Any], status_keywords: list[str], node_name_keywords: list[str]) -> bool:
     for node in workflow.get("nodes", []):
         name = node_name(node)
@@ -90,6 +162,11 @@ def run_audit_for_workflow(
     status_field_keywords = [str(x) for x in settings.get("status_field_keywords", [])]
     status_node_name_keywords = [str(x) for x in settings.get("status_node_name_keywords", [])]
     forbidden_pattern_strings = [str(x) for x in settings.get("forbidden_pattern_strings", [])]
+    notion_simple_required_operations = [str(x) for x in settings.get("notion_simple_required_operations", [])]
+    notion_filter_required_operations = [str(x) for x in settings.get("notion_filter_required_operations", [])]
+    magic_fallback_patterns = [str(x) for x in settings.get("magic_fallback_patterns", [])]
+    gemini_deprecated_model_names = [str(x) for x in settings.get("gemini_deprecated_model_names", [])]
+    gemini_deprecated_model_pattern = str(settings.get("gemini_deprecated_model_pattern", ""))
 
     nodes = workflow.get("nodes", [])
     status_driven = is_status_driven_workflow(workflow, status_field_keywords, status_node_name_keywords)
@@ -179,6 +256,145 @@ def run_audit_for_workflow(
                         )
                     )
                     break
+
+        # N8N-006: Notion get/getAll should explicitly set simple=false
+        if rule_enabled(rules, "N8N-006") and ntype == "n8n-nodes-base.notion":
+            op = str(params.get("operation", ""))
+            if op in notion_simple_required_operations:
+                simple_value = params.get("simple", None)
+                if not is_explicit_false(simple_value):
+                    findings.append(
+                        Finding(
+                            rule_id="N8N-006",
+                            severity=get_rule_severity(rules, "N8N-006", "FAIL"),
+                            message=f"Notion operation '{op}' does not explicitly set simple=false.",
+                            file=str(source_file),
+                            node=name,
+                            remediation="Set notion node parameter simple=false so downstream code can safely access page.properties.",
+                        )
+                    )
+
+        # N8N-007 / N8N-008: getAll filter precision and nested compound risk
+        if ntype == "n8n-nodes-base.notion":
+            op = str(params.get("operation", ""))
+            if op in notion_filter_required_operations:
+                return_all = bool(params.get("returnAll", False))
+                filter_type = str(params.get("filterType", "")).strip().lower()
+                filter_json_raw = str(params.get("filterJson", "")).strip()
+                filter_json_normalized = filter_json_raw.lower().replace(" ", "")
+                has_precise_filter = (
+                    filter_type == "json"
+                    and filter_json_raw not in {"", "{}", "[]", "null"}
+                    and filter_json_normalized not in {"{}", "[]", "null"}
+                )
+
+                if rule_enabled(rules, "N8N-007") and return_all and not has_precise_filter:
+                    findings.append(
+                        Finding(
+                            rule_id="N8N-007",
+                            severity=get_rule_severity(rules, "N8N-007", "FAIL"),
+                            message="Notion getAll is configured without a precise filterJson (full-scan risk).",
+                            file=str(source_file),
+                            node=name,
+                            remediation="Use filterType=json with a non-empty precise filterJson before returnAll queries.",
+                        )
+                    )
+
+                if rule_enabled(rules, "N8N-008") and filter_type == "json" and filter_json_raw:
+                    parsed_filter = parse_filter_json(filter_json_raw)
+                    nested_compound = False
+                    if parsed_filter is not None:
+                        nested_compound = has_nested_compound_filter(parsed_filter)
+                    else:
+                        nested_compound = "\"and\"" in filter_json_normalized and "\"or\"" in filter_json_normalized
+
+                    if nested_compound:
+                        findings.append(
+                            Finding(
+                                rule_id="N8N-008",
+                                severity=get_rule_severity(rules, "N8N-008", "WARN"),
+                                message="Notion filterJson contains nested AND/OR compound pattern (known API fragility risk).",
+                                file=str(source_file),
+                                node=name,
+                                remediation="Prefer simpler query filter shape and move complex composition to code-side filtering when needed.",
+                            )
+                        )
+
+        # N8N-009: magic fallback count anti-pattern
+        if rule_enabled(rules, "N8N-009") and ntype == "n8n-nodes-base.code":
+            code = str(params.get("jsCode", ""))
+            if any(pattern in code for pattern in magic_fallback_patterns) or re.search(r"set\(\s*estKey\s*,\s*99\s*\)", code):
+                findings.append(
+                    Finding(
+                        rule_id="N8N-009",
+                        severity=get_rule_severity(rules, "N8N-009", "FAIL"),
+                        message="Detected magic high-count fallback pattern on query error (for example safeCount=99).",
+                        file=str(source_file),
+                        node=name,
+                        remediation="Replace magic fallback with explicit error flag propagation and guarded routing conditions.",
+                    )
+                )
+
+        # N8N-010: Notion __rl Resource Locator deployed via API
+        if rule_enabled(rules, "N8N-010") and ntype == "n8n-nodes-base.notion":
+            if has_rl_resource_locator(params):
+                findings.append(
+                    Finding(
+                        rule_id="N8N-010",
+                        severity=get_rule_severity(rules, "N8N-010", "FAIL"),
+                        message="Notion node uses __rl Resource Locator format which fails silently when deployed via REST API (no output, no error).",
+                        file=str(source_file),
+                        node=name,
+                        remediation="Replace with n8n-nodes-base.httpRequest calling the Notion REST API directly (e.g. GET https://api.notion.com/v1/pages/{pageId}).",
+                    )
+                )
+
+        # N8N-011: Gemini models/ prefix redundant
+        if rule_enabled(rules, "N8N-011") and ntype == "@n8n/n8n-nodes-langchain.lmChatGoogleGemini":
+            model_name = str(params.get("modelName", ""))
+            if model_name.startswith("models/"):
+                findings.append(
+                    Finding(
+                        rule_id="N8N-011",
+                        severity=get_rule_severity(rules, "N8N-011", "FAIL"),
+                        message=f"Gemini modelName '{model_name}' has redundant 'models/' prefix; n8n adds it internally, resulting in 'models/models/...' and a 404 error.",
+                        file=str(source_file),
+                        node=name,
+                        remediation="Remove the 'models/' prefix (e.g. 'models/gemini-1.5-flash' → 'gemini-1.5-flash').",
+                    )
+                )
+
+        # N8N-012: Gemini deprecated or unavailable model name
+        if rule_enabled(rules, "N8N-012") and ntype == "@n8n/n8n-nodes-langchain.lmChatGoogleGemini":
+            model_name = str(params.get("modelName", ""))
+            is_deprecated = model_name in gemini_deprecated_model_names
+            if not is_deprecated and gemini_deprecated_model_pattern:
+                is_deprecated = bool(re.search(gemini_deprecated_model_pattern, model_name))
+            if is_deprecated:
+                findings.append(
+                    Finding(
+                        rule_id="N8N-012",
+                        severity=get_rule_severity(rules, "N8N-012", "WARN"),
+                        message=f"Gemini modelName '{model_name}' is a deprecated alias or has limited API key availability.",
+                        file=str(source_file),
+                        node=name,
+                        remediation="Use a stable versioned model such as 'gemini-1.5-flash'.",
+                    )
+                )
+
+        # N8N-013: IIFE $json scope trap in expression fields
+        if rule_enabled(rules, "N8N-013"):
+            if scan_for_iife_json(params):
+                findings.append(
+                    Finding(
+                        rule_id="N8N-013",
+                        severity=get_rule_severity(rules, "N8N-013", "FAIL"),
+                        message="Expression field uses IIFE pattern with $json access; $json scope inside an IIFE may point to the wrong upstream node, causing silent undefined values.",
+                        file=str(source_file),
+                        node=name,
+                        remediation="Move body/value assembly to an upstream Code node output and reference it directly (e.g. ={{ $json.requestBody }}).",
+                    )
+                )
 
     return findings
 

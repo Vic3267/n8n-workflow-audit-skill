@@ -1,7 +1,7 @@
 {
   "meta": {
     "name": "n8n-workflow-audit-default-rules",
-    "version": "1.0.0"
+    "version": "1.2.0"
   },
   "settings": {
     "expected_notion_update_event": "pagedUpdatedInDatabase",
@@ -27,7 +27,24 @@
       "Object.prototype.hasOwnProperty.call(",
       ".__proto__",
       ".prototype."
-    ]
+    ],
+    "notion_simple_required_operations": [
+      "get",
+      "getAll"
+    ],
+    "notion_filter_required_operations": [
+      "getAll"
+    ],
+    "magic_fallback_patterns": [
+      "set(estKey, 99)",
+      "safeCount=99",
+      "safeCount = 99"
+    ],
+    "gemini_deprecated_model_names": [
+      "gemini-2.0-flash",
+      "models/gemini-2.0-flash"
+    ],
+    "gemini_deprecated_model_pattern": "gemini-2\\.[0-9]"
   },
   "rules": [
     {
@@ -58,6 +75,54 @@
       "id": "N8N-005",
       "title": "Audit output contract and exit code",
       "severity": "PASS",
+      "enabled": true
+    },
+    {
+      "id": "N8N-006",
+      "title": "Notion get/getAll must set simple=false for properties access",
+      "severity": "FAIL",
+      "enabled": true
+    },
+    {
+      "id": "N8N-007",
+      "title": "Notion getAll must use a precise filter (no implicit full scan)",
+      "severity": "FAIL",
+      "enabled": true
+    },
+    {
+      "id": "N8N-008",
+      "title": "Notion filterJson should avoid nested AND/OR compound patterns",
+      "severity": "WARN",
+      "enabled": true
+    },
+    {
+      "id": "N8N-009",
+      "title": "Code nodes must not use magic high-count fallback on query error",
+      "severity": "FAIL",
+      "enabled": true
+    },
+    {
+      "id": "N8N-010",
+      "title": "Notion node __rl Resource Locator must not be deployed via API",
+      "severity": "FAIL",
+      "enabled": true
+    },
+    {
+      "id": "N8N-011",
+      "title": "Google Gemini model name must not have redundant models/ prefix",
+      "severity": "FAIL",
+      "enabled": true
+    },
+    {
+      "id": "N8N-012",
+      "title": "Google Gemini model name must not be a deprecated or unavailable alias",
+      "severity": "WARN",
+      "enabled": true
+    },
+    {
+      "id": "N8N-013",
+      "title": "Expression fields must not use IIFE with $json access",
+      "severity": "FAIL",
       "enabled": true
     }
   ]
