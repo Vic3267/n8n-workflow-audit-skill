@@ -39,10 +39,11 @@ python scripts/n8n_workflow_audit.py <workflow-path> --format json
 
 If a new real-world pitfall is found and is not detected:
 
-1. Add a rule definition in `rules/default_rules.json`.
-2. Implement detection in `scripts/n8n_workflow_audit.py`.
-3. Add a short example in `README.md`.
-4. Mention the new rule in this file.
+1. Add a rule entry in `rules/default_rules.json` (next N8N-NNN id, with severity).
+2. Implement detection in `scripts/n8n_workflow_audit.py` inside `run_audit_for_workflow()`.
+3. Update the rule table in `README.md` and the rule list in `README.ai.md`.
+4. Add a line to `docs/BUGFIX_LOG.md` describing the real incident that motivated the rule.
+5. Run tests to confirm detection fires correctly.
 
 ## Output parsing contract
 
@@ -57,8 +58,18 @@ When `--format json` is used, consume:
 
 ## Current rule set
 
-- `N8N-001`: Notion status parsing fallback risk
-- `N8N-002`: Notion trigger event mismatch for status-driven flow
-- `N8N-003`: unresolved Execute Workflow target id
-- `N8N-004`: sandbox-forbidden prototype access pattern
-- `N8N-005`: output contract and parser safety checks
+| Rule | Severity | Description |
+|---|---|---|
+| `N8N-001` | FAIL | Notion status parsing must support flattened payload fallback |
+| `N8N-002` | FAIL | Notion trigger event mismatch for status-driven flow |
+| `N8N-003` | FAIL | Unresolved Execute Workflow target id |
+| `N8N-004` | FAIL | Sandbox-forbidden prototype access pattern |
+| `N8N-005` | —    | Output contract and parser safety checks |
+| `N8N-006` | FAIL | Notion get/getAll must set simple=false |
+| `N8N-007` | FAIL | Notion getAll must use precise filterJson |
+| `N8N-008` | WARN | Notion filterJson nested AND/OR compound pattern |
+| `N8N-009` | FAIL | Magic high-count fallback on query error |
+| `N8N-010` | FAIL | Notion __rl Resource Locator API deployment failure |
+| `N8N-011` | FAIL | Gemini modelName redundant models/ prefix |
+| `N8N-012` | WARN | Gemini deprecated or unavailable model name |
+| `N8N-013` | FAIL | IIFE $json scope trap in expression fields |
