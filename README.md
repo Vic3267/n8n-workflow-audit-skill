@@ -4,6 +4,12 @@ Static audit skill for n8n workflow JSON files.
 
 This project helps teams catch common workflow mistakes before deployment.
 
+## Repository identity
+
+- Local path: `C:\n8n-projects\n8n-workflow-audit-skill`
+- GitHub repo: `https://github.com/Vic3267/n8n-workflow-audit-skill.git`
+- Repo boundary doc: `docs/REPOSITORY_IDENTITY.md`
+
 ## Why this exists
 
 Real projects repeatedly hit the same n8n issues:
