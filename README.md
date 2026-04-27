@@ -23,6 +23,25 @@ Real projects repeatedly hit the same n8n issues:
 
 This tool shifts those failures left into a deployment gate.
 
+## Human quick start
+
+Use this repository when you want a repeatable, pre-deploy audit for n8n workflow JSON files.
+
+```powershell
+git clone https://github.com/Vic3267/n8n-workflow-audit-skill.git
+cd n8n-workflow-audit-skill
+python scripts/n8n_workflow_audit.py <path-to-workflows> --format text
+```
+
+## AI quick start
+
+- Repo boundary: only touch files inside `C:\n8n-projects\n8n-workflow-audit-skill`.
+- Human-facing overview lives in `README.md`.
+- Machine-facing operating rules live in `README.ai.md`.
+- Skill contract for agent usage lives in `SKILL.md`.
+- Rule definitions live in `rules/default_rules.json`.
+- Detection logic lives in `scripts/n8n_workflow_audit.py`.
+
 ## Quick start
 
 ```powershell
@@ -101,6 +120,14 @@ When a new n8n pitfall is discovered in production:
 ## For AI agents
 
 See `README.ai.md` for machine-facing operating rules and required behavior.
+
+Required synchronization when behavior changes:
+- `README.md`: human-facing overview and rule table
+- `README.ai.md`: machine-facing contract
+- `SKILL.md`: how agents should invoke the tool
+- `rules/default_rules.json`: rule metadata
+- `scripts/n8n_workflow_audit.py`: implementation
+- `tests/`: regression coverage
 
 ## License
 
