@@ -416,3 +416,104 @@ class TestN8N013:
         }]
         ids = rule_ids(findings_for(nodes))
         assert "N8N-013" not in ids
+
+
+# ---------------------------------------------------------------------------
+# N8N-014: Code node setTimeout timing anti-pattern
+# ---------------------------------------------------------------------------
+
+class TestN8N014:
+    def test_fail_settimeout_promise(self):
+        code = "await new Promise(r => setTimeout(r, 2000));\nreturn $input.all();"
+        nodes = [{
+            "name": "Wait Code",
+            "type": "n8n-nodes-base.code",
+            "parameters": {"jsCode": code},
+        }]
+        ids = rule_ids(findings_for(nodes))
+        assert "N8N-014" in ids
+
+    def test_fail_settimeout_bare(self):
+        code = "setTimeout(() => {}, 1000);\nreturn $input.all();"
+        nodes = [{
+            "name": "Delay",
+            "type": "n8n-nodes-base.code",
+            "parameters": {"jsCode": code},
+        }]
+        ids = rule_ids(findings_for(nodes))
+        assert "N8N-014" in ids
+
+    def test_pass_no_settimeout(self):
+        code = "const items = $input.all();\nreturn items;"
+        nodes = [{
+            "name": "Process",
+            "type": "n8n-nodes-base.code",
+            "parameters": {"jsCode": code},
+        }]
+        ids = rule_ids(findings_for(nodes))
+        assert "N8N-014" not in ids
+
+
+# ---------------------------------------------------------------------------
+# N8N-015: Data-loading getAll nodes must not swallow errors
+# ---------------------------------------------------------------------------
+
+class TestN8N015:
+    def test_fail_sheets_default_read_with_on_error(self):
+        nodes = [{
+            "name": "Sheets getAll｜聯絡資料",
+            "type": "n8n-nodes-base.googleSheets",
+            "onError": "continueRegularOutput",
+            "parameters": {
+                "documentId": {"__rl": True, "value": "abc", "mode": "id"},
+                "sheetName": {"__rl": True, "value": "0", "mode": "id"},
+                "options": {},
+            },
+        }]
+        findings = findings_for(nodes)
+        assert any(f.rule_id == "N8N-015" and f.severity == "WARN" for f in findings)
+
+    def test_fail_notion_getall_with_on_error(self):
+        nodes = [{
+            "name": "Notion getAll｜客戶名簿",
+            "type": "n8n-nodes-base.notion",
+            "onError": "continueRegularOutput",
+            "parameters": {
+                "resource": "databasePage",
+                "operation": "getAll",
+                "returnAll": True,
+                "options": {},
+            },
+        }]
+        findings = findings_for(nodes)
+        assert any(f.rule_id == "N8N-015" and f.severity == "WARN" for f in findings)
+
+    def test_pass_sheets_write_with_on_error(self):
+        """Write/update nodes may legitimately use onError: continueRegularOutput."""
+        nodes = [{
+            "name": "Sheets｜寫入 V 欄",
+            "type": "n8n-nodes-base.googleSheets",
+            "onError": "continueRegularOutput",
+            "parameters": {
+                "operation": "appendOrUpdate",
+                "documentId": {"__rl": True, "value": "abc", "mode": "id"},
+                "sheetName": {"__rl": True, "value": "0", "mode": "id"},
+                "columns": {"mappingMode": "defineBelow", "value": {}},
+                "options": {},
+            },
+        }]
+        ids = rule_ids(findings_for(nodes))
+        assert "N8N-015" not in ids
+
+    def test_pass_sheets_read_no_on_error(self):
+        nodes = [{
+            "name": "Sheets getAll｜聯絡資料",
+            "type": "n8n-nodes-base.googleSheets",
+            "parameters": {
+                "documentId": {"__rl": True, "value": "abc", "mode": "id"},
+                "sheetName": {"__rl": True, "value": "0", "mode": "id"},
+                "options": {},
+            },
+        }]
+        ids = rule_ids(findings_for(nodes))
+        assert "N8N-015" not in ids

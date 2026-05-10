@@ -396,6 +396,46 @@ def run_audit_for_workflow(
                     )
                 )
 
+        # N8N-014: Code node setTimeout timing anti-pattern
+        if rule_enabled(rules, "N8N-014") and ntype == "n8n-nodes-base.code":
+            code = str(params.get("jsCode", ""))
+            if "setTimeout" in code:
+                findings.append(
+                    Finding(
+                        rule_id="N8N-014",
+                        severity=get_rule_severity(rules, "N8N-014", "FAIL"),
+                        message="Code node uses setTimeout for timing delay; setTimeout Promise resolution is unsupported in the n8n task runner sandbox and causes a 60-second execution timeout.",
+                        file=str(source_file),
+                        node=name,
+                        remediation="Replace the Code node delay with an n8n-nodes-base.wait node (resume=timeInterval, amount=<seconds>, unit=seconds) inserted between the nodes that need spacing.",
+                    )
+                )
+
+        # N8N-015: Data-loading getAll/read nodes must not swallow errors
+        if rule_enabled(rules, "N8N-015"):
+            on_error = str(node.get("onError", ""))
+            is_data_loading_read = False
+            if ntype == "n8n-nodes-base.googleSheets":
+                op = str(params.get("operation", "")).lower()
+                # Default (no operation) and explicit read operations are data-loading reads
+                if op in {"", "read", "getrows", "getall"}:
+                    is_data_loading_read = True
+            elif ntype == "n8n-nodes-base.notion":
+                op = str(params.get("operation", "")).lower()
+                if op == "getall":
+                    is_data_loading_read = True
+            if is_data_loading_read and on_error == "continueRegularOutput":
+                findings.append(
+                    Finding(
+                        rule_id="N8N-015",
+                        severity=get_rule_severity(rules, "N8N-015", "WARN"),
+                        message="Data-loading getAll/read node has onError: continueRegularOutput; API errors (e.g. 429 rate-limit) will be silently converted to data items and passed downstream, causing Code nodes to process error objects as valid rows.",
+                        file=str(source_file),
+                        node=name,
+                        remediation="Remove onError from initial data-loading nodes so errors surface loudly. Reserve onError: continueRegularOutput for write/update nodes where partial failure is acceptable.",
+                    )
+                )
+
     return findings
 
 

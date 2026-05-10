@@ -20,6 +20,8 @@ Real projects repeatedly hit the same n8n issues:
 - Notion `__rl` Resource Locator that works in the UI but breaks on API deploy
 - Google Gemini `models/` prefix doubling causing 404 errors
 - IIFE patterns in expression fields reading the wrong upstream `$json`
+- `setTimeout` in Code nodes causing 60-second timeouts (n8n task runner sandbox restriction)
+- `onError: continueRegularOutput` on data-loading nodes silently converting API errors into malformed data rows
 
 This tool shifts those failures left into a deployment gate.
 
@@ -87,6 +89,8 @@ python scripts/n8n_workflow_audit.py workflows/prod --format text
 | `N8N-011` | FAIL | Google Gemini `modelName` must not start with `models/` (n8n adds the prefix internally → double path → 404) |
 | `N8N-012` | WARN | Google Gemini `modelName` must not be a deprecated or limited-availability alias |
 | `N8N-013` | FAIL | Expression fields must not use IIFE with `$json` access (`$json` scope inside IIFE may silently point to wrong node) |
+| `N8N-014` | FAIL | Code nodes must not use `setTimeout` for timing delays — n8n task runner sandbox does not resolve `setTimeout` Promises, causing a 60-second execution timeout |
+| `N8N-015` | WARN | Data-loading `getAll`/read nodes must not use `onError: continueRegularOutput` — API errors (e.g. 429) are silently converted into data items and passed downstream as malformed rows |
 
 Rules are defined in `rules/default_rules.json` and can be extended without changing the engine.
 

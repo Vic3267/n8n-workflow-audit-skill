@@ -128,6 +128,28 @@ Record of real incidents that motivated each rule. Each entry explains what brok
 
 ---
 
+### N8N-014：Code node setTimeout task runner sandbox restriction
+
+**Incident date:** 2026-05-10
+**Project:** NOTION 優化資料庫 / customer-index-reconciliation
+**Symptom:** Bridge workflow execution timed out at 60 seconds on the Code node that contained `await new Promise(r => setTimeout(r, 2000))`. The workflow appeared to hang and eventually failed with a timeout error.
+**Root cause:** n8n's task runner (JavaScript sandbox) does not support `setTimeout` as a real async timer — the Promise created by `setTimeout` never resolves inside the sandboxed execution environment. Any Code node that uses `setTimeout`-based delays will always timeout at 60 seconds.
+**Fix:** Replaced the Code node with an official `n8n-nodes-base.wait` node (`resume: timeInterval`, `amount: 2`, `unit: seconds`). For wait durations under 65 seconds, the Wait node stays in memory without writing to the database (per official docs).
+**Rule:** N8N-014 — detects `setTimeout` usage in any Code node `jsCode`.
+
+---
+
+### N8N-015：onError: continueRegularOutput on data-loading getAll nodes
+
+**Incident date:** 2026-05-10
+**Project:** NOTION 優化資料庫 / customer-index-reconciliation
+**Symptom:** Bridge workflow hit Google Sheets 429 rate-limit error on `Sheets getAll｜未委任客戶`. Instead of stopping, the workflow continued and passed `{ "error": "ReadRequestsPerMinutePerUser Quota exceeded..." }` as a data item to the downstream Code node. The matching logic then tried to process error objects as valid contact rows.
+**Root cause:** Both Sheets `getAll` nodes had `onError: continueRegularOutput` set. This setting is designed for write/update nodes where partial failure is acceptable — on data-loading reads it converts any API error into a silent malformed row, breaking all downstream logic that assumes valid data.
+**Fix:** Removed `onError` from all initial data-loading nodes (`Sheets getAll｜聯絡資料` and `Sheets getAll｜未委任客戶`). They now fail loudly on any error, making the root cause immediately visible.
+**Rule:** N8N-015 — WARN on any Sheets/Notion `getAll` or default-read node that has `onError: continueRegularOutput`.
+
+---
+
 ## First-run Scan Results
 
 **Date:** 2026-04-15

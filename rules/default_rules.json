@@ -1,7 +1,7 @@
 {
   "meta": {
     "name": "n8n-workflow-audit-default-rules",
-    "version": "1.3.0"
+    "version": "1.4.0"
   },
   "settings": {
     "expected_notion_update_event": "pagedUpdatedInDatabase",
@@ -125,6 +125,18 @@
       "id": "N8N-013",
       "title": "Expression fields must not use IIFE with $json access",
       "severity": "FAIL",
+      "enabled": true
+    },
+    {
+      "id": "N8N-014",
+      "title": "Code nodes must not use setTimeout for timing delays",
+      "severity": "FAIL",
+      "enabled": true
+    },
+    {
+      "id": "N8N-015",
+      "title": "Data-loading getAll/read nodes must not use onError: continueRegularOutput",
+      "severity": "WARN",
       "enabled": true
     }
   ]
