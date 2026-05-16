@@ -3,13 +3,31 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Reports
 .tmp_audit/
 *.audit.json
+*.log
+tmp/
+temp/
 
-# OS / editor
+# OS / editor / agent tools
 .DS_Store
 Thumbs.db
+desktop.ini
 .idea/
 .vscode/
+.agent/
+.agents/
+.claude/
+.cursor/
+.cursorrules
+.gemini/
+.opencode/
+.spectra/
+openspec/.vector-search.db*
+.env
+.env.*
