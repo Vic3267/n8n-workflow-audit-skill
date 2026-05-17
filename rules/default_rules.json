@@ -1,7 +1,7 @@
 {
   "meta": {
     "name": "n8n-workflow-audit-default-rules",
-    "version": "1.4.0"
+    "version": "1.5.0"
   },
   "settings": {
     "expected_notion_update_event": "pagedUpdatedInDatabase",
@@ -46,7 +46,14 @@
       "gemini-2.0-flash-exp",
       "gemini-2.0-pro-exp"
     ],
-    "gemini_deprecated_model_pattern": "gemini-2\\.0"
+    "gemini_deprecated_model_pattern": "gemini-2\\.0",
+    "tax_id_field_keywords": [
+      "taxId",
+      "統編",
+      "統一編號",
+      "tax_id",
+      "businessNumber"
+    ]
   },
   "rules": [
     {
@@ -136,6 +143,60 @@
     {
       "id": "N8N-015",
       "title": "Data-loading getAll/read nodes must not use onError: continueRegularOutput",
+      "severity": "WARN",
+      "enabled": true
+    },
+    {
+      "id": "N8N-016",
+      "title": "Code node must not use sandbox-forbidden modules (fs, crypto, AbortController)",
+      "severity": "FAIL",
+      "enabled": true
+    },
+    {
+      "id": "N8N-017",
+      "title": "OData $filter comparison value must be wrapped in single quotes",
+      "severity": "WARN",
+      "enabled": true
+    },
+    {
+      "id": "N8N-018",
+      "title": "IF node unary operator must set singleValue: true",
+      "severity": "FAIL",
+      "enabled": true
+    },
+    {
+      "id": "N8N-019",
+      "title": "Code node must not use Array.isArray($json) (always false after HTTP Request)",
+      "severity": "WARN",
+      "enabled": true
+    },
+    {
+      "id": "N8N-020",
+      "title": "Code node must not use .all()[0] hard-coded index inside loop workflows",
+      "severity": "WARN",
+      "enabled": true
+    },
+    {
+      "id": "N8N-021",
+      "title": "Sheets-sourced tax-ID-like fields must be normalized with padStart",
+      "severity": "WARN",
+      "enabled": true
+    },
+    {
+      "id": "N8N-022",
+      "title": "HTTP Request must not use overly long inline JSON body expressions",
+      "severity": "WARN",
+      "enabled": true
+    },
+    {
+      "id": "N8N-023",
+      "title": "Code node in runOnceForEachItem mode must not return a non-empty array literal",
+      "severity": "FAIL",
+      "enabled": true
+    },
+    {
+      "id": "N8N-024",
+      "title": "Notion update workflows must include an archived/in_trash page guard",
       "severity": "WARN",
       "enabled": true
     }

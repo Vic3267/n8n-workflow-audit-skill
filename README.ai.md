@@ -73,3 +73,14 @@ When `--format json` is used, consume:
 | `N8N-011` | FAIL | Gemini modelName redundant models/ prefix |
 | `N8N-012` | WARN | Gemini deprecated or unavailable model name |
 | `N8N-013` | FAIL | IIFE $json scope trap in expression fields |
+| `N8N-014` | FAIL | Code node setTimeout timing anti-pattern (sandbox does not resolve Promise) |
+| `N8N-015` | WARN | Data-loading getAll/read nodes must not swallow errors via onError: continueRegularOutput |
+| `N8N-016` | FAIL | Code node uses sandbox-forbidden modules (fs, crypto, AbortController) |
+| `N8N-017` | WARN | OData $filter comparison value missing single-quote wrapping |
+| `N8N-018` | FAIL | IF node unary operator missing singleValue: true |
+| `N8N-019` | WARN | Code node uses Array.isArray($json) (always false after HTTP Request) |
+| `N8N-020` | WARN | Code node uses .all()[0] hard-coded index inside loop workflows |
+| `N8N-021` | WARN | Sheets-sourced tax-ID-like field without padStart normalization |
+| `N8N-022` | WARN | HTTP Request inline JSON body expression too long (>400 chars) |
+| `N8N-023` | FAIL | Code node in runOnceForEachItem returns non-empty array literal |
+| `N8N-024` | WARN | Notion update workflow missing archived/in_trash page guard |

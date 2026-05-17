@@ -167,9 +167,36 @@ def run_audit_for_workflow(
     magic_fallback_patterns = [str(x) for x in settings.get("magic_fallback_patterns", [])]
     gemini_deprecated_model_names = [str(x) for x in settings.get("gemini_deprecated_model_names", [])]
     gemini_deprecated_model_pattern = str(settings.get("gemini_deprecated_model_pattern", ""))
+    tax_id_field_keywords = [str(x) for x in settings.get("tax_id_field_keywords", [])]
 
     nodes = workflow.get("nodes", [])
     status_driven = is_status_driven_workflow(workflow, status_field_keywords, status_node_name_keywords)
+
+    # Pre-loop workflow-level facts used by N8N-020 / N8N-021 / N8N-024
+    has_loop_node = any(n.get("type", "") == "n8n-nodes-base.splitInBatches" for n in nodes)
+    has_sheets_node = any(n.get("type", "") == "n8n-nodes-base.googleSheets" for n in nodes)
+    has_notion_update = any(
+        n.get("type", "") == "n8n-nodes-base.notion"
+        and str(n.get("parameters", {}).get("operation", "")) == "update"
+        for n in nodes
+    )
+    has_notion_read = any(
+        n.get("type", "") == "n8n-nodes-base.notion"
+        and str(n.get("parameters", {}).get("operation", "")) in ("get", "getAll")
+        for n in nodes
+    )
+    has_archived_guard = any(
+        (
+            "archived" in str(n.get("parameters", {}).get("jsCode", ""))
+            or "in_trash" in str(n.get("parameters", {}).get("jsCode", ""))
+        )
+        and (
+            "return" in str(n.get("parameters", {}).get("jsCode", ""))
+            or "status" in str(n.get("parameters", {}).get("jsCode", ""))
+        )
+        for n in nodes
+        if n.get("type", "") == "n8n-nodes-base.code"
+    )
 
     for node in nodes:
         name = node_name(node)
@@ -435,6 +462,194 @@ def run_audit_for_workflow(
                         remediation="Remove onError from initial data-loading nodes so errors surface loudly. Reserve onError: continueRegularOutput for write/update nodes where partial failure is acceptable.",
                     )
                 )
+
+        # N8N-016: Code node uses sandbox-forbidden modules
+        if rule_enabled(rules, "N8N-016") and ntype == "n8n-nodes-base.code":
+            code = str(params.get("jsCode", ""))
+            forbidden_module_patterns = [
+                "require('fs')",
+                'require("fs")',
+                "require('crypto')",
+                'require("crypto")',
+                "new AbortController",
+            ]
+            for pat in forbidden_module_patterns:
+                if pat in code:
+                    findings.append(
+                        Finding(
+                            rule_id="N8N-016",
+                            severity=get_rule_severity(rules, "N8N-016", "FAIL"),
+                            message=f"Code node uses sandbox-forbidden module/API pattern '{pat}'.",
+                            file=str(source_file),
+                            node=name,
+                            remediation="Remove from Code node. Code nodes only do data transforms. Use native HTTP Request nodes for network calls.",
+                        )
+                    )
+                    break
+
+        # N8N-017: OData $filter missing single-quote wrapping
+        if rule_enabled(rules, "N8N-017") and ntype == "n8n-nodes-base.httpRequest":
+            qp = params.get("queryParameters", {}) or {}
+            qp_params = qp.get("parameters", []) if isinstance(qp, dict) else []
+            if isinstance(qp_params, list):
+                for entry in qp_params:
+                    if not isinstance(entry, dict):
+                        continue
+                    if str(entry.get("name", "")) != "$filter":
+                        continue
+                    value = str(entry.get("value", ""))
+                    if " eq " in value and "eq '" not in value:
+                        findings.append(
+                            Finding(
+                                rule_id="N8N-017",
+                                severity=get_rule_severity(rules, "N8N-017", "WARN"),
+                                message="OData $filter uses 'eq' comparison without single-quote wrapping; the API will silently return empty results.",
+                                file=str(source_file),
+                                node=name,
+                                remediation="Wrap comparison value in single quotes: field eq '{{ $json.value }}'.",
+                            )
+                        )
+                        break
+
+        # N8N-018: IF node unary operator missing singleValue: true
+        if rule_enabled(rules, "N8N-018") and ntype == "n8n-nodes-base.if":
+            unary_ops = {"notEmpty", "isEmpty", "empty", "exists", "notExists"}
+            condition_lists = []
+            conditions_root = params.get("conditions", {})
+            if isinstance(conditions_root, dict):
+                inner = conditions_root.get("conditions", [])
+                if isinstance(inner, list):
+                    condition_lists.append(inner)
+            options_root = params.get("options", {})
+            if isinstance(options_root, dict):
+                inner_opts = options_root.get("conditions", [])
+                if isinstance(inner_opts, list):
+                    condition_lists.append(inner_opts)
+            triggered = False
+            for cond_list in condition_lists:
+                for cond in cond_list:
+                    if not isinstance(cond, dict):
+                        continue
+                    operator = cond.get("operator", {})
+                    if not isinstance(operator, dict):
+                        continue
+                    op_name = str(operator.get("operation", ""))
+                    if op_name in unary_ops and operator.get("singleValue") is not True:
+                        findings.append(
+                            Finding(
+                                rule_id="N8N-018",
+                                severity=get_rule_severity(rules, "N8N-018", "FAIL"),
+                                message=f"IF node unary operator '{op_name}' is missing singleValue: true; the comparison will be evaluated incorrectly.",
+                                file=str(source_file),
+                                node=name,
+                                remediation="Add \"singleValue\": true to the operator object for unary operations (notEmpty/isEmpty/empty/exists/notExists).",
+                            )
+                        )
+                        triggered = True
+                        break
+                if triggered:
+                    break
+
+        # N8N-019: Code node uses Array.isArray($json)
+        if rule_enabled(rules, "N8N-019") and ntype == "n8n-nodes-base.code":
+            code = str(params.get("jsCode", ""))
+            if "Array.isArray($json" in code:
+                findings.append(
+                    Finding(
+                        rule_id="N8N-019",
+                        severity=get_rule_severity(rules, "N8N-019", "WARN"),
+                        message="Code node uses Array.isArray($json); n8n auto-splits JSON arrays into items, so $json is always an object and the check is always false.",
+                        file=str(source_file),
+                        node=name,
+                        remediation="Check a known field instead: const record = (resp && resp.KnownField) ? resp : null;",
+                    )
+                )
+
+        # N8N-020: Code node uses .all()[0] hard-coded index inside loop workflows
+        if rule_enabled(rules, "N8N-020") and has_loop_node and ntype == "n8n-nodes-base.code":
+            code = str(params.get("jsCode", ""))
+            if re.search(r"\.all\(\)\[0\]", code):
+                findings.append(
+                    Finding(
+                        rule_id="N8N-020",
+                        severity=get_rule_severity(rules, "N8N-020", "WARN"),
+                        message="Code node uses .all()[0] hard-coded index in a workflow with splitInBatches; .all() returns all items from the node's entire run, not the current batch.",
+                        file=str(source_file),
+                        node=name,
+                        remediation="In loops, use $('NodeName').all().find(it => it.json.businessKey === currentKey) instead of hard-coded [0].",
+                    )
+                )
+
+        # N8N-021: Sheets-sourced tax-ID-like field without padStart normalization
+        if rule_enabled(rules, "N8N-021") and has_sheets_node and ntype == "n8n-nodes-base.code":
+            code = str(params.get("jsCode", ""))
+            if any(kw in code for kw in tax_id_field_keywords) and "padStart" not in code:
+                findings.append(
+                    Finding(
+                        rule_id="N8N-021",
+                        severity=get_rule_severity(rules, "N8N-021", "WARN"),
+                        message="Code node references a tax-ID-like field sourced from Google Sheets without padStart normalization; Sheets drops leading zeros from numeric cells.",
+                        file=str(source_file),
+                        node=name,
+                        remediation="Normalize with String(raw||'').replace(/\\D/g,'').padStart(8,'0') before comparing or persisting.",
+                    )
+                )
+
+        # N8N-022: HTTP Request inline JSON body expression too long
+        if rule_enabled(rules, "N8N-022") and ntype == "n8n-nodes-base.httpRequest":
+            json_body_value = params.get("jsonBody", None)
+            if not isinstance(json_body_value, str):
+                body_obj = params.get("body", {})
+                if isinstance(body_obj, dict):
+                    raw_val = body_obj.get("rawValue", None)
+                    if isinstance(raw_val, str):
+                        json_body_value = raw_val
+            if isinstance(json_body_value, str) and json_body_value.startswith("={{") and len(json_body_value) > 400:
+                findings.append(
+                    Finding(
+                        rule_id="N8N-022",
+                        severity=get_rule_severity(rules, "N8N-022", "WARN"),
+                        message=f"HTTP Request has a complex inline JSON body expression ({len(json_body_value)} chars); long inline expressions risk invalid syntax and are hard to debug.",
+                        file=str(source_file),
+                        node=name,
+                        remediation="Move complex payload assembly to an upstream Code node and reference with ={{ $json.payload }}.",
+                    )
+                )
+
+        # N8N-023: Code node in runOnceForEachItem mode returns array literal
+        if rule_enabled(rules, "N8N-023") and ntype == "n8n-nodes-base.code":
+            mode = str(params.get("mode", "")).strip()
+            if mode == "" or mode == "runOnceForEachItem":
+                code = str(params.get("jsCode", ""))
+                if re.search(r"\breturn\s+\[\s*\{", code):
+                    findings.append(
+                        Finding(
+                            rule_id="N8N-023",
+                            severity=get_rule_severity(rules, "N8N-023", "FAIL"),
+                            message="Code node in runOnceForEachItem mode returns a non-empty array literal (return [{...}]); per-item mode expects a single object, not an array.",
+                            file=str(source_file),
+                            node=name,
+                            remediation="Return {json: {...}} instead of [{json: {...}}], or switch the node to runOnceForAllItems mode.",
+                        )
+                    )
+
+    # N8N-024: Notion update workflows must include an archived/in_trash guard
+    if (
+        rule_enabled(rules, "N8N-024")
+        and has_notion_update
+        and has_notion_read
+        and not has_archived_guard
+    ):
+        findings.append(
+            Finding(
+                rule_id="N8N-024",
+                severity=get_rule_severity(rules, "N8N-024", "WARN"),
+                message="Workflow reads and updates Notion pages but has no archived/in_trash guard; updating archived pages will fail with HTTP 400.",
+                file=str(source_file),
+                node="<workflow>",
+                remediation="After reading a Notion page, check if (page.archived || page.in_trash) { return [{json:{status:'skipped', reason:'archived'}}]; } before the update node.",
+            )
+        )
 
     return findings
 

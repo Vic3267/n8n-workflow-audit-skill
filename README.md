@@ -91,6 +91,15 @@ python scripts/n8n_workflow_audit.py workflows/prod --format text
 | `N8N-013` | FAIL | Expression fields must not use IIFE with `$json` access (`$json` scope inside IIFE may silently point to wrong node) |
 | `N8N-014` | FAIL | Code nodes must not use `setTimeout` for timing delays — n8n task runner sandbox does not resolve `setTimeout` Promises, causing a 60-second execution timeout |
 | `N8N-015` | WARN | Data-loading `getAll`/read nodes must not use `onError: continueRegularOutput` — API errors (e.g. 429) are silently converted into data items and passed downstream as malformed rows |
+| `N8N-016` | FAIL | Code node must not use sandbox-forbidden modules (`require('fs')`, `require('crypto')`, `new AbortController`) — Code nodes only do data transforms |
+| `N8N-017` | WARN | OData `$filter` comparison value must be wrapped in single quotes (`field eq 'value'`) — unquoted comparisons return empty results silently |
+| `N8N-018` | FAIL | IF node unary operator (`notEmpty`/`isEmpty`/`empty`/`exists`/`notExists`) must set `singleValue: true` |
+| `N8N-019` | WARN | Code node must not use `Array.isArray($json)` — n8n auto-splits arrays into items so `$json` is always an object |
+| `N8N-020` | WARN | Code node must not use `.all()[0]` hard-coded index in workflows with `splitInBatches` — `.all()` returns the entire run, not the current batch |
+| `N8N-021` | WARN | Code nodes referencing tax-ID-like fields (`taxId`, `統編`, `統一編號`, `tax_id`, `businessNumber`) sourced from Google Sheets must call `padStart` — Sheets drops leading zeros |
+| `N8N-022` | WARN | HTTP Request JSON body expression must not be an inline `={{...}}` string longer than 400 chars — move payload assembly upstream |
+| `N8N-023` | FAIL | Code node in `runOnceForEachItem` mode must not return a non-empty array literal (`return [{...}]`) — per-item mode expects a single object |
+| `N8N-024` | WARN | Workflows that read and update Notion pages must include an `archived`/`in_trash` page guard — updating archived pages fails with HTTP 400 |
 
 Rules are defined in `rules/default_rules.json` and can be extended without changing the engine.
 
